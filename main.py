@@ -173,6 +173,27 @@ bpy.context.object.modifiers["Array"].curve = bpy.data.objects["BeltCurve"]
 bpy.ops.object.modifier_add(type='CURVE')
 bpy.context.object.modifiers["Curve"].object = bpy.data.objects["BeltCurve"]
 
+bpy.context.scene.frame_start = 1
+bpy.context.scene.frame_end = 720
+
+#### Setup animation for belt moving
+obj = bpy.context.object
+# Set and keyframe initial location at frame 1
+bpy.context.scene.frame_set(1)
+obj.location[0] = 0
+obj.keyframe_insert(data_path="location", index=0)
+
+# Set and keyframe final location at frame 720
+bpy.context.scene.frame_set(720)
+obj.location[0] = - math.pi * Diameter_Large * 2
+obj.keyframe_insert(data_path="location", index=0)
+
+# Set interpolation to LINEAR for the rotation channel
+action = obj.animation_data.action
+for fcurve in action.fcurves:
+    if fcurve.data_path == "location" and fcurve.array_index == 0:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
 
 ##### Create Sprockets
 offset_large = 5
@@ -184,6 +205,26 @@ bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_large, rad
                             addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
 
 bpy.context.object.rotation_euler[1] = math.radians(2)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+obj = bpy.context.object
+# Set and keyframe initial rotation at frame 1
+bpy.context.scene.frame_set(1)
+obj.rotation_euler[1] = 0
+obj.keyframe_insert(data_path="rotation_euler", index=1)
+
+# Set and keyframe final rotation at frame 720
+bpy.context.scene.frame_set(720)
+obj.rotation_euler[1] = 12.5664
+obj.keyframe_insert(data_path="rotation_euler", index=1)
+
+# Set interpolation to LINEAR for the rotation channel
+action = obj.animation_data.action
+for fcurve in action.fcurves:
+    if fcurve.data_path == "rotation_euler" and fcurve.array_index == 1:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
+
 # Rename the active object to GearLarge
 bpy.context.active_object.name = "GearLarge"
 
@@ -193,10 +234,28 @@ bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_small, rad
                             addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
 
 bpy.context.object.rotation_euler[1] = math.radians(6)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+obj = bpy.context.object
+# Set and keyframe initial rotation at frame 1
+bpy.context.scene.frame_set(1)
+obj.rotation_euler[1] = 0
+obj.keyframe_insert(data_path="rotation_euler", index=1)
+
+# Set and keyframe final rotation at frame 720
+bpy.context.scene.frame_set(720)
+obj.rotation_euler[1] = 12.5664 * (Diameter_Large / Diameter_Small)
+obj.keyframe_insert(data_path="rotation_euler", index=1)
+
+# Set interpolation to LINEAR for the rotation channel
+action = obj.animation_data.action
+for fcurve in action.fcurves:
+    if fcurve.data_path == "rotation_euler" and fcurve.array_index == 1:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
+            
 # Rename the active object to GearSmall
 bpy.context.active_object.name = "GearSmall"
-
-
 
 ################ Color assigning
 # Get the objects by name (ensure names are correct)
@@ -233,6 +292,7 @@ assign_material(obj_belt, matRed)
 assign_material(obj_gl, matBlue)
 assign_material(obj_gs, matGreen)
 
+################### Animation Setup
 
 time_elapsed = (time.time() - start_time) * 1000
 print(f"Time elapsed = {time_elapsed:.2f} ms")                            
