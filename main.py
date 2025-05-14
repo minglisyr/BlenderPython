@@ -1,6 +1,19 @@
 import bpy
 import math
 import os
+from mathutils import Vector
+import time
+
+start_time = time.time()
+
+### Geometry Input
+# Belt/Tooth
+Tooth_Number = 220
+Belt_Width = 11
+
+# Sprockets
+Diameter_Large = 300
+Diameter_Small = 150
 
 ### Auto Clean Up ***
 # Select all objects
@@ -21,12 +34,31 @@ bpy.ops.wm.obj_import(filepath=profile_path)
 
 # Replace 'Curve' with the name of your imported 2D object
 obj_name = "Profile\Surface"  # Fixed backslash issue
-extrude_thickness = 10.0  # Set your desired thickness here
+extrude_thickness = Belt_Width  # Set your desired thickness here
 
 # Get the object safely
 obj = bpy.data.objects.get(obj_name)
 if not obj:
     raise ValueError(f"Object '{obj_name}' not found. Check the imported file and object name.")
+
+### Math preparation
+bbox = obj.bound_box
+tooth_length = bbox[4][0] - bbox[0][0] # Length of Tooth
+belt_length = tooth_length * Tooth_Number
+
+def calculate_center_distance(L, D1, D2):
+    term1 = (L - (math.pi / 2) * (D1 + D2)) / 4
+    term2 = math.sqrt(term1**2 - ((D1 - D2) / 2)**2)
+    return term1 + term2
+
+tooth_number_large = round(math.pi * Diameter_Large / tooth_length)
+tooth_number_small = round(math.pi * Diameter_Small / tooth_length)
+
+center_distance = calculate_center_distance(belt_length, Diameter_Large, Diameter_Small)
+print(f"Center distance: {center_distance:.2f} mm")
+print(f"Belt length: {belt_length:.2f} mm")
+print(f"Sprocket Large: Dia. = {Diameter_Large:.2f} mm, Tooth# = {tooth_number_large}")
+print(f"Sprocket Small: Dia. = {Diameter_Small:.2f} mm, Tooth# = {tooth_number_small}")
 
 # Ensure the object is selected and active
 bpy.context.view_layer.objects.active = obj
@@ -52,59 +84,155 @@ elif obj.type == 'MESH':
 else:
     raise TypeError(f"Unsupported object type: {obj.type}. Only 'CURVE' and 'MESH' are supported.")
 
-### Duplicate 3D Unit & Joining to a loop belt ***
+# Flip the 3D Unit around
+obj.rotation_mode = 'XYZ'  
+obj.rotation_euler[1] = math.pi
 
-# Parameters
-original_obj_name = obj_name  # Replace with your object's name
-num_duplicates = 50        # Total number of objects (including original)
+####################################################################################
+# === CALCULATE POSITIONS ===
+R1 = Diameter_Large / 2
+R2 = Diameter_Small / 2
+CD = center_distance
 
-# Get the original object safely
-original_obj = bpy.data.objects.get(original_obj_name)
-if not original_obj:
-    raise ValueError(f"Object '{original_obj_name}' not found. Check the object name.")
+# Sprocket centers (X-Z plane)
+O1 = Vector((0, 0, 0))
+O2 = Vector((CD, 0, 0))
 
-# Calculate x length (bounding box in local space)
-bbox = original_obj.bound_box
-x_length = bbox[4][0] - bbox[0][0]
+# Angle from O1 to O2 (in X-Z)
+phi = math.atan2(O2.z - O1.z, O2.x - O1.x)
 
-# Calculate total arc length and radius
-total_length = x_length * num_duplicates
-radius = total_length / (2 * math.pi)
-angle_step = 2 * math.pi / num_duplicates
+# Angle to tangent points
+theta = math.acos((R1 - R2) / CD)
 
-# Deselect all
-bpy.ops.object.select_all(action='DESELECT')
+# Tangent point directions (upper and lower)
+angle_upper = phi + theta
+angle_lower = phi - theta
 
-# List to keep track of all objects to join
-objs_to_join = []
+# Upper tangent points (X-Z plane)
+P1u = O1 + Vector((R1 * math.cos(angle_upper), 0, R1 * math.sin(angle_upper)))
+P2u = O2 + Vector((R2 * math.cos(angle_upper), 0, R2 * math.sin(angle_upper)))
 
-for i in range(num_duplicates):
-    # Duplicate the object
-    if i == 0:
-        new_obj = original_obj
+# Lower tangent points (X-Z plane)
+P1l = O1 + Vector((R1 * math.cos(angle_lower), 0, R1 * math.sin(angle_lower)))
+P2l = O2 + Vector((R2 * math.cos(angle_lower), 0, R2 * math.sin(angle_lower)))
+
+# === CREATE CURVE DATA ===
+
+def arc_points(center, radius, start, end, segments=64):
+    # Compute start and end angles
+    a1 = math.atan2(start.z - center.z, start.x - center.x)
+    a2 = math.atan2(end.z - center.z, end.x - center.x)
+    # Ensure arc goes counterclockwise
+    if a2 < a1:
+        a2 += 2 * math.pi
+    return [
+        center + Vector((
+            radius * math.cos(a1 + t * (a2 - a1) / segments),
+            0,
+            radius * math.sin(a1 + t * (a2 - a1) / segments)))
+        for t in range(segments + 1)
+    ]
+
+# Build the curve points: arc1 -> tangent1 -> arc2 -> tangent2
+arc1 = arc_points(O1, R1, P1u, P1l)
+arc2 = arc_points(O2, R2, P2l, P2u)
+
+curve_points = []
+curve_points.extend(arc1)
+curve_points.append(P2l)
+curve_points.extend(arc2)
+curve_points.append(P1u)
+
+# === CREATE BLENDER CURVE OBJECT ===
+curve_data = bpy.data.curves.new('BeltCurve', type='CURVE')
+curve_data.dimensions = '3D'
+curve_data.resolution_u = 2
+
+polyline = curve_data.splines.new('POLY')
+polyline.points.add(len(curve_points) - 1)
+for i, pt in enumerate(curve_points):
+    polyline.points[i].co = (pt.x, pt.y, pt.z, 1)
+
+polyline.use_cyclic_u = True  # Close the loop
+
+curve_obj = bpy.data.objects.new('BeltCurve', curve_data)
+bpy.context.collection.objects.link(curve_obj)
+
+# OPTIONAL: Select and focus
+bpy.context.view_layer.objects.active = curve_obj
+curve_obj.select_set(True)
+
+###########################################################################
+# Ensure the object is selected and active
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+bpy.ops.object.modifier_add(type='ARRAY')
+bpy.context.object.modifiers["Array"].fit_type = 'FIT_CURVE'
+bpy.context.object.modifiers["Array"].curve = bpy.data.objects["BeltCurve"]
+
+bpy.ops.object.modifier_add(type='CURVE')
+bpy.context.object.modifiers["Curve"].object = bpy.data.objects["BeltCurve"]
+
+
+##### Create Sprockets
+offset_large = 5
+offset_small = 4
+
+# Create the large gear
+bpy.ops.mesh.primitive_gear(align='WORLD', location=(0, - Belt_Width / 4, 0), rotation=(math.pi / 2, 0, 0), change=False)
+bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_large, radius=Diameter_Large / 2 - offset_large, 
+                            addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
+
+bpy.context.object.rotation_euler[1] = math.radians(2)
+# Rename the active object to GearLarge
+bpy.context.active_object.name = "GearLarge"
+
+# Create the small gear
+bpy.ops.mesh.primitive_gear(align='WORLD', location=(CD, - Belt_Width / 4, 0), rotation=(math.pi / 2, 0, 0), change=False)
+bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_small, radius=Diameter_Small / 2 - offset_small, 
+                            addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
+
+bpy.context.object.rotation_euler[1] = math.radians(6)
+# Rename the active object to GearSmall
+bpy.context.active_object.name = "GearSmall"
+
+
+
+################ Color assigning
+# Get the objects by name (ensure names are correct)
+obj_belt = bpy.data.objects['Profile\\Surface']  # Use double backslash if the name contains a backslash
+obj_gl = bpy.data.objects['GearLarge']
+obj_gs = bpy.data.objects['GearSmall']
+
+# Create Red material
+matRed = bpy.data.materials.new(name="RedMaterial")
+matRed.use_nodes = True
+bsdf_red = matRed.node_tree.nodes["Principled BSDF"]
+bsdf_red.inputs['Base Color'].default_value = (1, 0, 0, 1)  # Red
+
+# Create Blue material
+matBlue = bpy.data.materials.new(name="BlueMaterial")
+matBlue.use_nodes = True
+bsdf_blue = matBlue.node_tree.nodes["Principled BSDF"]
+bsdf_blue.inputs['Base Color'].default_value = (0, 0, 1, 1)  # Blue
+
+# Create Green material
+matGreen = bpy.data.materials.new(name="GreenMaterial")
+matGreen.use_nodes = True
+bsdf_green = matGreen.node_tree.nodes["Principled BSDF"]
+bsdf_green.inputs['Base Color'].default_value = (0, 1, 0, 1)  # Green
+
+# Assign materials to objects
+def assign_material(obj, mat):
+    if obj.data.materials:
+        obj.data.materials[0] = mat
     else:
-        # Use bpy.data.objects.new for better performance
-        new_obj = original_obj.copy()
-        new_obj.data = original_obj.data.copy()
-        bpy.context.collection.objects.link(new_obj)
-    # Calculate angle
-    angle = i * angle_step
-    # Set position on X-Z plane (Y is constant)
-    new_obj.location = (
-        math.cos(angle) * radius,
-        original_obj.location.y,  # Y stays constant
-        math.sin(angle) * radius
-    )
-    # Align object tangent to circle (rotate around Y-axis)
-    new_obj.rotation_euler[1] = math.pi / 2
-    new_obj.rotation_euler[0] = -angle
-    new_obj.rotation_euler[1] = -angle  # Negative to align tangent; adjust as needed for your object orientation
-   
-    objs_to_join.append(new_obj)
-    new_obj.select_set(True)
+        obj.data.materials.append(mat)
 
-# Set active object for joining
-bpy.context.view_layer.objects.active = objs_to_join[0]
+assign_material(obj_belt, matRed)
+assign_material(obj_gl, matBlue)
+assign_material(obj_gs, matGreen)
 
-# Join all objects into one mesh
-bpy.ops.object.join()
+
+time_elapsed = (time.time() - start_time) * 1000
+print(f"Time elapsed = {time_elapsed:.2f} ms")                            
