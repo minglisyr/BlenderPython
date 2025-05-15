@@ -6,10 +6,13 @@ import time
 
 start_time = time.time()
 
+### Define STL filename
+stlname = 'ProfileGT'
+
 ### Geometry Input
 # Belt/Tooth
-Tooth_Number = 220
-Belt_Width = 11
+Tooth_Number = 300
+Belt_Width = 20
 
 # Sprockets
 Diameter_Large = 300
@@ -29,11 +32,23 @@ for _ in range(3):
 ### Importing 2D Profile ***
 
 # Use os.path for cross-platform compatibility
-profile_path = os.path.join("C:/", "Users", "ml2954", "Documents", "BlenderPython", "Profile.obj")
-bpy.ops.wm.obj_import(filepath=profile_path)
+profile_path = os.path.join("/home", "ml2954", "BlenderPython", f"{stlname}.stl")
+bpy.ops.wm.stl_import(filepath=profile_path)
+
+obj = bpy.data.objects[stlname]
+
+# Make the mesh single-user (unique)
+obj.data = obj.data.copy()
+# Scale by 1000 (meters to millimeters)
+obj.scale = [s * 1000 for s in obj.scale]
+
+# Apply scale to mesh data
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+bpy.ops.object.transform_apply(scale=True)
 
 # Replace 'Curve' with the name of your imported 2D object
-obj_name = "Profile\Surface"  # Fixed backslash issue
+obj_name = stlname  # Fixed backslash issue
 extrude_thickness = Belt_Width  # Set your desired thickness here
 
 # Get the object safely
@@ -57,6 +72,7 @@ tooth_number_small = round(math.pi * Diameter_Small / tooth_length)
 center_distance = calculate_center_distance(belt_length, Diameter_Large, Diameter_Small)
 print(f"Center distance: {center_distance:.2f} mm")
 print(f"Belt length: {belt_length:.2f} mm")
+print(f"Tooth length: {tooth_length:.2f} mm")
 print(f"Sprocket Large: Dia. = {Diameter_Large:.2f} mm, Tooth# = {tooth_number_large}")
 print(f"Sprocket Small: Dia. = {Diameter_Small:.2f} mm, Tooth# = {tooth_number_small}")
 
@@ -146,7 +162,7 @@ curve_points.append(P1u)
 # === CREATE BLENDER CURVE OBJECT ===
 curve_data = bpy.data.curves.new('BeltCurve', type='CURVE')
 curve_data.dimensions = '3D'
-curve_data.resolution_u = 2
+curve_data.resolution_u = 8
 
 polyline = curve_data.splines.new('POLY')
 polyline.points.add(len(curve_points) - 1)
@@ -196,13 +212,13 @@ for fcurve in action.fcurves:
             keyframe.interpolation = 'LINEAR'
 
 ##### Create Sprockets
-offset_large = 5
-offset_small = 4
+offset_large = 7
+offset_small = 5
 
 # Create the large gear
-bpy.ops.mesh.primitive_gear(align='WORLD', location=(0, - Belt_Width / 4, 0), rotation=(math.pi / 2, 0, 0), change=False)
+bpy.ops.mesh.primitive_gear(align='WORLD', location=(0, - Belt_Width / 2, 0), rotation=(math.pi / 2, 0, 0), change=False)
 bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_large, radius=Diameter_Large / 2 - offset_large, 
-                            addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
+                            addendum=5, dedendum=0, angle=math.radians(15), base=5, width=Belt_Width / 2, skew=0, conangle=0, crown=0.5)
 
 bpy.context.object.rotation_euler[1] = math.radians(2)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -229,11 +245,11 @@ for fcurve in action.fcurves:
 bpy.context.active_object.name = "GearLarge"
 
 # Create the small gear
-bpy.ops.mesh.primitive_gear(align='WORLD', location=(CD, - Belt_Width / 4, 0), rotation=(math.pi / 2, 0, 0), change=False)
+bpy.ops.mesh.primitive_gear(align='WORLD', location=(CD, - Belt_Width / 2, 0), rotation=(math.pi / 2, 0, 0), change=False)
 bpy.ops.mesh.primitive_gear(change=True, number_of_teeth=tooth_number_small, radius=Diameter_Small / 2 - offset_small, 
-                            addendum=4, dedendum=0, angle=0.3, base=3, width=Belt_Width/2, skew=0, conangle=0, crown=0.5)
+                            addendum=4, dedendum=0, angle=math.radians(15), base=5, width=Belt_Width / 2, skew=0, conangle=0, crown=0.5)
 
-bpy.context.object.rotation_euler[1] = math.radians(6)
+bpy.context.object.rotation_euler[1] = math.radians(3)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
 obj = bpy.context.object
@@ -259,7 +275,7 @@ bpy.context.active_object.name = "GearSmall"
 
 ################ Color assigning
 # Get the objects by name (ensure names are correct)
-obj_belt = bpy.data.objects['Profile\\Surface']  # Use double backslash if the name contains a backslash
+obj_belt = bpy.data.objects[stlname]  # Use double backslash if the name contains a backslash
 obj_gl = bpy.data.objects['GearLarge']
 obj_gs = bpy.data.objects['GearSmall']
 
@@ -293,6 +309,8 @@ assign_material(obj_gl, matBlue)
 assign_material(obj_gs, matGreen)
 
 ################### Animation Setup
+
+
 
 time_elapsed = (time.time() - start_time) * 1000
 print(f"Time elapsed = {time_elapsed:.2f} ms")                            
