@@ -4,6 +4,20 @@ import os
 from mathutils import Vector
 import time
 
+############ Input Geometry Orientation ############
+#
+#     ----------------------------------------
+#     |                                      |
+#     |                  -----> X            |
+#      ---               |                ---
+#         \              |               /
+#          \             V              /
+#           \             Y            /
+#            \                        /
+#             \                      /
+#              ~~~~~~~~~~~~~~~~~~~~~~
+# Tooth profile should be oriented in the X-Y plane as shown above. 
+
 start_time = time.time()
 
 ### Define OBJ filename
