@@ -4,6 +4,20 @@ import os
 from mathutils import Vector
 import time
 
+############ Input Geometry Orientation ############
+#
+#     ----------------------------------------
+#     |                                      |
+#     |                  -----> X            |
+#      ---               |                ---
+#         \              |               /
+#          \             V              /
+#           \             Z            /
+#            \                        /
+#             \                      /
+#              ~~~~~~~~~~~~~~~~~~~~~~
+# Tooth profile should be oriented in the X-Z plane as shown above.   
+
 start_time = time.time()
 
 ### Define STL filename
